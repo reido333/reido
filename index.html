@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Checklist Compartilhado</title>
+    <title>Meu Checklist Privado</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #e9ecef; display: flex; justify-content: center; padding: 20px; }
         .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
@@ -11,19 +11,22 @@
         
         .form-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
         input[type="text"], input[type="date"] { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
-        button#addBtn { padding: 12px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; }
-        button#addBtn:hover { background: #0056b3; }
+        
+        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
+        #addBtn { background: #007bff; color: white; }
+        #addBtn:hover { background: #0056b3; }
+        
+        #googleLoginBtn { background: #db4437; color: white; margin-bottom: 15px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        #googleLoginBtn:hover { background: #c13527; }
 
         ul { list-style: none; padding: 0; }
-        li { 
-            background: #fff; border-bottom: 1px solid #eee; padding: 12px; 
-            display: flex; align-items: center; justify-content: space-between;
-        }
+        li { background: #fff; border-bottom: 1px solid #eee; padding: 12px; display: flex; align-items: center; justify-content: space-between; }
         .task-info { display: flex; align-items: center; gap: 10px; flex: 1; }
-        .date-badge { font-size: 0.8em; color: #666; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+        .date-badge { font-size: 0.8em; color: #666; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; }
         
         .done span { text-decoration: line-through; opacity: 0.5; }
-        input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+        #loading { text-align: center; color: #666; font-style: italic; margin-bottom: 10px; }
+        .user-info { font-size: 0.8em; color: #888; text-align: center; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -31,20 +34,31 @@
 <div class="container">
     <h2>📝 Meu Checklist</h2>
     
-    <div class="form-group">
-        <input type="text" id="taskInput" placeholder="O que precisa ser feito?">
-        <input type="date" id="dateInput">
-        <button id="addBtn">Adicionar Tarefa</button>
+    <div id="loading">Identificando usuário...</div>
+    
+    <div id="authSection">
+        <button id="googleLoginBtn">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" alt="Google icon">
+            Salvar lista no Google
+        </button>
     </div>
 
-    <ul id="taskList"></ul>
+    <div id="mainContent" style="display: none;">
+        <div id="userInfo" class="user-info"></div>
+        <div class="form-group">
+            <input type="text" id="taskInput" placeholder="O que precisa ser feito?">
+            <input type="date" id="dateInput">
+            <button id="addBtn">Adicionar Tarefa</button>
+        </div>
+        <ul id="taskList"></ul>
+    </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, where, orderBy, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // Suas credenciais já integradas
     const firebaseConfig = {
         apiKey: "AIzaSyAL4ySdfSAADCvtcjDUOXPEJVAIFupu9P8",
         authDomain: "reido-f92ee.firebaseapp.com",
@@ -56,66 +70,86 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const auth = getAuth(app);
     const colRef = collection(db, "tarefas");
+    const provider = new GoogleAuthProvider();
 
-    // 1. ADICIONAR TAREFA
+    let currentUser = null;
+    let unsubscribe = null;
+
+    // Login automático (Anônimo) ao abrir a página
+    signInAnonymously(auth).catch(err => console.error("Erro Auth:", err));
+
+    // Login com Google ao clicar no botão
+    document.getElementById('googleLoginBtn').addEventListener('click', () => {
+        signInWithPopup(auth, provider).catch(err => console.error("Erro Google:", err));
+    });
+
+    // Monitorar quem está logado
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            currentUser = user;
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            
+            const infoDiv = document.getElementById('userInfo');
+            if (user.isAnonymous) {
+                infoDiv.innerHTML = "Logado como: <b>Convidado</b> (Sua lista pode sumir se limpar o cache)";
+                document.getElementById('googleLoginBtn').style.display = 'flex';
+            } else {
+                infoDiv.innerHTML = `Logado como: <b>${user.displayName || user.email}</b>`;
+                document.getElementById('googleLoginBtn').style.display = 'none';
+            }
+
+            startListening(user.uid);
+        }
+    });
+
+    // Adicionar tarefa vinculada ao UID do usuário
     document.getElementById('addBtn').addEventListener('click', async () => {
         const text = document.getElementById('taskInput').value;
         const date = document.getElementById('dateInput').value;
-        
-        if (!text || !date) {
-            alert("Preencha a tarefa e a data!");
-            return;
+        if (text && date && currentUser) {
+            await addDoc(colRef, {
+                text,
+                date,
+                completed: false,
+                userId: currentUser.uid,
+                createdAt: Date.now()
+            });
+            document.getElementById('taskInput').value = '';
         }
-
-        await addDoc(colRef, {
-            text: text,
-            date: date,
-            completed: false,
-            createdAt: Date.now()
-        });
-
-        document.getElementById('taskInput').value = '';
-        document.getElementById('dateInput').value = '';
     });
 
-    // 2. ESCUTAR MUDANÇAS EM TEMPO REAL (E ORDENAR POR DATA)
-    onSnapshot(query(colRef, orderBy("date", "asc")), (snapshot) => {
-        const listElement = document.getElementById('taskList');
-        listElement.innerHTML = '';
-        
-        snapshot.docs.forEach(docSnap => {
-            const task = docSnap.data();
-            const id = docSnap.id;
-            const li = document.createElement('li');
-            
-            if (task.completed) li.classList.add('done');
+    // Buscar apenas tarefas do usuário logado
+    function startListening(uid) {
+        if (unsubscribe) unsubscribe();
+        const q = query(colRef, where("userId", "==", uid), orderBy("date", "asc"));
 
-            const dateBr = task.date.split('-').reverse().join('/');
+        unsubscribe = onSnapshot(q, (snapshot) => {
+            const listElement = document.getElementById('taskList');
+            listElement.innerHTML = '';
+            snapshot.docs.forEach(docSnap => {
+                const task = docSnap.data();
+                const id = docSnap.id;
+                const li = document.createElement('li');
+                if (task.completed) li.classList.add('done');
+                const dateBr = task.date.split('-').reverse().join('/');
 
-            li.innerHTML = `
-                <div class="task-info">
-                    <input type="checkbox" ${task.completed ? 'checked' : ''} id="check-${id}">
-                    <span>${task.text}</span>
-                </div>
-                <span class="date-badge">${dateBr}</span>
-            `;
-            
-            listElement.appendChild(li);
-
-            // Evento para marcar como concluído
-            document.getElementById(`check-${id}`).addEventListener('change', () => {
-                toggleTask(id, task.completed);
+                li.innerHTML = `
+                    <div class="task-info">
+                        <input type="checkbox" ${task.completed ? 'checked' : ''} id="check-${id}">
+                        <span>${task.text}</span>
+                    </div>
+                    <span class="date-badge">${dateBr}</span>
+                `;
+                listElement.appendChild(li);
+                document.getElementById(`check-${id}`).addEventListener('change', async () => {
+                    await updateDoc(doc(db, "tarefas", id), { completed: !task.completed });
+                });
             });
         });
-    });
-
-    // 3. FUNÇÃO PARA ATUALIZAR NO BANCO
-    async function toggleTask(id, currentStatus) {
-        const docRef = doc(db, "tarefas", id);
-        await updateDoc(docRef, { completed: !currentStatus });
     }
 </script>
-
 </body>
 </html>
