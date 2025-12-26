@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checklist Compartilhado</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #e9ecef; display: flex; justify-content: center; padding: 20px; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h2 { text-align: center; color: #333; margin-bottom: 20px; }
+        
+        .form-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        input[type="text"], input[type="date"] { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        button#addBtn { padding: 12px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; }
+        button#addBtn:hover { background: #0056b3; }
+
+        ul { list-style: none; padding: 0; }
+        li { 
+            background: #fff; border-bottom: 1px solid #eee; padding: 12px; 
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .task-info { display: flex; align-items: center; gap: 10px; flex: 1; }
+        .date-badge { font-size: 0.8em; color: #666; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+        
+        .done span { text-decoration: line-through; opacity: 0.5; }
+        input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📝 Meu Checklist</h2>
+    
+    <div class="form-group">
+        <input type="text" id="taskInput" placeholder="O que precisa ser feito?">
+        <input type="date" id="dateInput">
+        <button id="addBtn">Adicionar Tarefa</button>
+    </div>
+
+    <ul id="taskList"></ul>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // Suas credenciais já integradas
+    const firebaseConfig = {
+        apiKey: "AIzaSyAL4ySdfSAADCvtcjDUOXPEJVAIFupu9P8",
+        authDomain: "reido-f92ee.firebaseapp.com",
+        projectId: "reido-f92ee",
+        storageBucket: "reido-f92ee.firebasestorage.app",
+        messagingSenderId: "168960472442",
+        appId: "1:168960472442:web:32d61e9659bb8c043f92c3"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const colRef = collection(db, "tarefas");
+
+    // 1. ADICIONAR TAREFA
+    document.getElementById('addBtn').addEventListener('click', async () => {
+        const text = document.getElementById('taskInput').value;
+        const date = document.getElementById('dateInput').value;
+        
+        if (!text || !date) {
+            alert("Preencha a tarefa e a data!");
+            return;
+        }
+
+        await addDoc(colRef, {
+            text: text,
+            date: date,
+            completed: false,
+            createdAt: Date.now()
+        });
+
+        document.getElementById('taskInput').value = '';
+        document.getElementById('dateInput').value = '';
+    });
+
+    // 2. ESCUTAR MUDANÇAS EM TEMPO REAL (E ORDENAR POR DATA)
+    onSnapshot(query(colRef, orderBy("date", "asc")), (snapshot) => {
+        const listElement = document.getElementById('taskList');
+        listElement.innerHTML = '';
+        
+        snapshot.docs.forEach(docSnap => {
+            const task = docSnap.data();
+            const id = docSnap.id;
+            const li = document.createElement('li');
+            
+            if (task.completed) li.classList.add('done');
+
+            const dateBr = task.date.split('-').reverse().join('/');
+
+            li.innerHTML = `
+                <div class="task-info">
+                    <input type="checkbox" ${task.completed ? 'checked' : ''} id="check-${id}">
+                    <span>${task.text}</span>
+                </div>
+                <span class="date-badge">${dateBr}</span>
+            `;
+            
+            listElement.appendChild(li);
+
+            // Evento para marcar como concluído
+            document.getElementById(`check-${id}`).addEventListener('change', () => {
+                toggleTask(id, task.completed);
+            });
+        });
+    });
+
+    // 3. FUNÇÃO PARA ATUALIZAR NO BANCO
+    async function toggleTask(id, currentStatus) {
+        const docRef = doc(db, "tarefas", id);
+        await updateDoc(docRef, { completed: !currentStatus });
+    }
+</script>
+
+</body>
+</html>
