@@ -5,30 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meu Checklist Privado</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #e9ecef; display: flex; justify-content: center; padding: 20px; }
-        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        h2 { text-align: center; color: #333; margin-bottom: 20px; }
+        /* Cores Padrão (Modo Claro) */
+        :root {
+            --bg-body: #e9ecef;
+            --bg-card: #ffffff;
+            --text-main: #333333;
+            --text-sub: #666666;
+            --border: #dddddd;
+            --item-bg: #ffffff;
+        }
+
+        /* Cores para Modo Escuro (Automático) */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-body: #121212;
+                --bg-card: #1e1e1e;
+                --text-main: #f0f0f0;
+                --text-sub: #b0b0b0;
+                --border: #333333;
+                --item-bg: #252525;
+            }
+        }
+
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-body); display: flex; justify-content: center; padding: 20px; color: var(--text-main); transition: 0.3s; }
+        .container { background: var(--bg-card); padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); width: 100%; max-width: 400px; }
+        
+        h2 { text-align: center; margin-bottom: 5px; }
+        .task-counter { text-align: center; font-size: 0.9em; color: #007bff; margin-bottom: 20px; font-weight: bold; }
+        
         .form-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
-        input[type="text"], input[type="date"] { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        input[type="text"], input[type="date"] { padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 16px; background: var(--item-bg); color: var(--text-main); }
+        
         button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
         #addBtn { background: #007bff; color: white; }
         #googleLoginBtn { background: #db4437; color: white; margin-bottom: 15px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        
         ul { list-style: none; padding: 0; }
-        li { background: #fff; border-bottom: 1px solid #eee; padding: 12px; display: flex; align-items: center; gap: 10px; }
+        li { background: var(--item-bg); border-bottom: 1px solid var(--border); padding: 12px; display: flex; align-items: center; gap: 10px; border-radius: 4px; margin-bottom: 5px; }
+        
         .task-info { display: flex; align-items: center; gap: 10px; flex: 1; }
-        .date-badge { font-size: 0.8em; color: #666; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; }
+        .date-badge { font-size: 0.75em; color: var(--text-sub); background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 4px; }
+        
         .done span { text-decoration: line-through; opacity: 0.5; }
         .delete-btn { background: none; color: #ff4d4d; font-size: 18px; padding: 0 5px; cursor: pointer; }
-        .delete-btn:hover { color: #cc0000; }
-        #loading { text-align: center; color: #666; font-style: italic; }
-        .user-info { font-size: 0.8em; color: #888; text-align: center; margin-bottom: 15px; }
+        
+        #loading { text-align: center; color: var(--text-sub); font-style: italic; }
+        .user-info { font-size: 0.8em; color: var(--text-sub); text-align: center; margin-bottom: 15px; }
     </style>
 </head>
 <body>
+
 <div class="container">
     <h2>📝 Meu Checklist</h2>
-    <div id="loading">Carregando...</div>
-    <div id="authSection" style="display: none;"><button id="googleLoginBtn">Salvar com Google</button></div>
+    <div id="taskCounter" class="task-counter">Carregando contador...</div>
+    
+    <div id="loading">Identificando usuário...</div>
+    
+    <div id="authSection" style="display: none;">
+        <button id="googleLoginBtn">Salvar lista no Google</button>
+    </div>
+
     <div id="mainContent" style="display: none;">
         <div id="userInfo" class="user-info"></div>
         <div class="form-group">
@@ -87,23 +123,29 @@
         onSnapshot(q, (snap) => {
             const list = document.getElementById('taskList');
             list.innerHTML = '';
+            let pendingCount = 0;
+
             snap.forEach(d => {
                 const t = d.data();
+                if (!t.completed) pendingCount++;
+
                 const li = document.createElement('li');
                 if (t.completed) li.classList.add('done');
                 li.innerHTML = `
                     <div class="task-info">
-                        <input type="checkbox" ${t.completed ? 'checked' : ''} onchange="this.dispatchEvent(new CustomEvent('toggle', {detail: '${d.id}'}))">
+                        <input type="checkbox" ${t.completed ? 'checked' : ''} id="check-${d.id}">
                         <span>${t.text}</span>
                     </div>
                     <span class="date-badge">${t.date.split('-').reverse().join('/')}</span>
-                    <button class="delete-btn" onclick="this.dispatchEvent(new CustomEvent('delete', {detail: '${d.id}'}))">✖</button>
+                    <button class="delete-btn" id="del-${d.id}">✖</button>
                 `;
-                // Eventos de clique
-                li.querySelector('input').addEventListener('toggle', (e) => updateDoc(doc(db, "tarefas", e.detail), { completed: !t.completed }));
-                li.querySelector('.delete-btn').addEventListener('delete', (e) => { if(confirm('Excluir tarefa?')) deleteDoc(doc(db, "tarefas", e.detail)); });
                 list.appendChild(li);
+
+                document.getElementById(`check-${d.id}`).onclick = () => updateDoc(doc(db, "tarefas", d.id), { completed: !t.completed });
+                document.getElementById(`del-${d.id}`).onclick = () => { if(confirm('Excluir?')) deleteDoc(doc(db, "tarefas", d.id)); };
             });
+
+            document.getElementById('taskCounter').innerText = pendingCount === 0 ? "🎉 Tudo pronto!" : `⏳ Você tem ${pendingCount} tarefa(s) pendente(s)`;
         });
     }
 </script>
